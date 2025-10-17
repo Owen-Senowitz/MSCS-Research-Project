@@ -486,13 +486,49 @@ class SegDataset(Dataset):
         img = resize_img(img, self.img_size)
         msk = resize_mask(msk, self.img_size)
 
-        # light flips
+        # --- Data Augmentation ---
+        # Random horizontal/vertical flip
         if random.random() < 0.5:
             img = img.transpose(Image.FLIP_LEFT_RIGHT)
             msk = msk.transpose(Image.FLIP_LEFT_RIGHT)
         if random.random() < 0.5:
             img = img.transpose(Image.FLIP_TOP_BOTTOM)
             msk = msk.transpose(Image.FLIP_TOP_BOTTOM)
+
+        # Random rotation (by 0, 90, 180, 270 degrees)
+        if random.random() < 0.5:
+            angle = random.choice([0, 90, 180, 270])
+            img = img.rotate(angle)
+            msk = msk.rotate(angle)
+
+        # Random scaling (zoom in/out)
+        if random.random() < 0.5:
+            scale = random.uniform(0.9, 1.1)
+            new_size = int(self.img_size * scale)
+            img = img.resize((new_size, new_size), Image.BILINEAR)
+            msk = msk.resize((new_size, new_size), Image.NEAREST)
+            # Center crop or pad back to original size
+            if scale > 1.0:
+                left = (new_size - self.img_size) // 2
+                top = (new_size - self.img_size) // 2
+                img = img.crop((left, top, left + self.img_size, top + self.img_size))
+                msk = msk.crop((left, top, left + self.img_size, top + self.img_size))
+            else:
+                pad = (self.img_size - new_size) // 2
+                img = Image.fromarray(np.pad(np.array(img), ((pad, self.img_size - new_size - pad), (pad, self.img_size - new_size - pad)), mode='constant'))
+                msk = Image.fromarray(np.pad(np.array(msk), ((pad, self.img_size - new_size - pad), (pad, self.img_size - new_size - pad)), mode='constant'))
+
+        # Random brightness/contrast
+        if random.random() < 0.5:
+            factor = random.uniform(0.8, 1.2)
+            img = Image.fromarray(np.clip(np.array(img) * factor, 0, 255).astype(np.uint8))
+
+        # Random Gaussian noise
+        if random.random() < 0.3:
+            arr = np.array(img).astype(np.float32)
+            noise = np.random.normal(0, 10, arr.shape)
+            arr = np.clip(arr + noise, 0, 255).astype(np.uint8)
+            img = Image.fromarray(arr)
 
         img_t = pil_to_tensor_image(img)
         msk_t = pil_to_tensor_mask(msk)
