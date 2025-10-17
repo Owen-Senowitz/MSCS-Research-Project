@@ -454,15 +454,21 @@ class SegDataset(Dataset):
         return len(self.triples)
 
     def _synth_mask_from_cxy(self, w: int, h: int, cxy_path: str, rad_path: Optional[str]) -> Image.Image:
+        # Support multiple cancer cells per image by drawing multiple circles
         nums = parse_numbers_from_file(cxy_path)
-        cx, cy = (nums[0], nums[1]) if len(nums) >= 2 else (None, None)
-        r = DEFAULT_RAD_PX
+        rads = []
         if rad_path:
-            rnums = parse_numbers_from_file(rad_path)
-            if len(rnums) >= 1 and rnums[0] > 0:
-                r = int(rnums[0])
+            rads = parse_numbers_from_file(rad_path)
         mask = np.zeros((h, w), dtype=np.uint8)
-        if cx is not None and cy is not None:
+        # Each cell is defined by a pair (cx, cy) and optional radius
+        for i in range(0, len(nums), 2):
+            if i + 1 >= len(nums):
+                break
+            cx, cy = nums[i], nums[i + 1]
+            # Use corresponding radius if available, else default
+            r = DEFAULT_RAD_PX
+            if i // 2 < len(rads) and rads[i // 2] > 0:
+                r = int(rads[i // 2])
             cv2.circle(mask, (int(round(cx)), int(round(cy))), int(r), 255, thickness=-1)
         return Image.fromarray(mask, mode="L")
 
@@ -653,6 +659,15 @@ def load_model(weights: Optional[str] = None, device: Optional[str] = None) -> n
     if not os.path.exists(w):
         raise FileNotFoundError(f"Weights not found at {w}. Train or provide a valid path.")
     state = torch.load(w, map_location=device)
+    # Handle DataParallel 'module.' prefix if present
+    if isinstance(state, dict) and 'state_dict' in state:
+        state = state['state_dict']
+    if len(state) > 0 and list(state.keys())[0].startswith('module.'):
+        from collections import OrderedDict
+        new_state = OrderedDict()
+        for k, v in state.items():
+            new_state[k.replace('module.', '', 1)] = v
+        state = new_state
     m.load_state_dict(state)
     m.eval()
     return m
@@ -829,7 +844,17 @@ def infer_and_draw(sample_count: int = 12, thr: float = 0.25, min_area: int = 64
     model = TransUNetSmall(in_ch=1, out_ch=1, base=32, nhead=8, depth=4).to(DEVICE)
     if not os.path.exists(WEIGHTS_PATH):
         raise RuntimeError("Weights not found. Train first.")
-    model.load_state_dict(torch.load(WEIGHTS_PATH, map_location=DEVICE))
+    state = torch.load(WEIGHTS_PATH, map_location=DEVICE)
+    # Handle DataParallel 'module.' prefix if present
+    if isinstance(state, dict) and 'state_dict' in state:
+        state = state['state_dict']
+    if len(state) > 0 and list(state.keys())[0].startswith('module.'):
+        from collections import OrderedDict
+        new_state = OrderedDict()
+        for k, v in state.items():
+            new_state[k.replace('module.', '', 1)] = v
+        state = new_state
+    model.load_state_dict(state)
     model.eval()
 
     triples = load_or_build_index(ROOT, INDEX_PKL)
