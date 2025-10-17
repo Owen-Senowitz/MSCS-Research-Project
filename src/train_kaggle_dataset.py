@@ -750,7 +750,11 @@ def train_loop(datasets: Optional[Tuple[str, ...]] = None, pathology_filter: Opt
     val_loader = DataLoader(val_ds, batch_size=BATCH_SIZE, shuffle=False,
                             num_workers=NUM_WORKERS_VAL, pin_memory=True)
 
-    model = TransUNetSmall(in_ch=1, out_ch=1, base=32, nhead=8, depth=4).to(DEVICE)
+    model = TransUNetSmall(in_ch=1, out_ch=1, base=32, nhead=8, depth=4)
+    if torch.cuda.device_count() > 1:
+        print(f"Using {torch.cuda.device_count()} GPUs")
+        model = nn.DataParallel(model)
+    model = model.to(DEVICE)
     opt = Adam(model.parameters(), lr=LR)
     sched = ReduceLROnPlateau(opt, mode="min", factor=0.5, patience=2, verbose=True)
     loss_fn = BCEDiceLoss()
