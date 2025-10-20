@@ -11,7 +11,7 @@ key = os.getenv("KAGGLE_KEY")
 print("Using Kaggle account:", username)
 
 # Directory where you want the dataset
-dataset_dir = "./data/kaggle"
+dataset_dir = "./data"
 
 # Check if dataset already exists
 if os.path.exists(dataset_dir) and len(os.listdir(dataset_dir)) > 0:
