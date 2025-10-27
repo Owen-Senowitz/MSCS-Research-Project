@@ -5,6 +5,8 @@ from PIL import Image
 import io
 import os
 from tensorflow import keras
+import tensorflow as tf
+import base64
 
 
 app = Flask(__name__)
@@ -65,7 +67,17 @@ def predict():
 			return jsonify({"success": False, "error": "Invalid or empty image uploaded."}), 400
 		preds = model.predict(img)
 		result = preds.tolist()
-		return jsonify({"success": True, "prediction": result})
+
+		# Output prediction and label (benign/malignant) only
+		label = None
+		if model_name == "best_transunet":
+			pred_value = float(result[0][0]) if isinstance(result[0], list) else float(result[0])
+			label = "Malignant" if pred_value > 0.5 else "Benign"
+		return jsonify({
+			"success": True,
+			"prediction": result,
+			"label": label
+		})
 	except Exception as e:
 		return jsonify({"success": False, "error": str(e)}), 500
 
